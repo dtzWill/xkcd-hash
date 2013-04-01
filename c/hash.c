@@ -40,6 +40,7 @@ void gen_rand(char *str) {
   static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
                                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                 "0123456789";
+  // TODO: Much faster (fewer calls to rand()!)
   for (unsigned i = 0; i < LEN; ++i)
     str[i] = charset[rand() % (sizeof(charset) - 1)];
 }
