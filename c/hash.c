@@ -58,8 +58,8 @@ static inline int hamming_dist(unsigned char *s1, unsigned char *s2,
 
   unsigned *p1 = (unsigned *)s1;
   unsigned *p2 = (unsigned *)s2;
-  for (unsigned i = 0; i < len; ++i) {
-    dist += distance(s1[i], s2[i]);
+  for (unsigned i = 0; i < steps; ++i) {
+    dist += distance(p1[i], p2[i]);
   }
   return dist;
 }
