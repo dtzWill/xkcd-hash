@@ -22,7 +22,7 @@ _USE_ASM_         = SKEIN_USE_ASM
 .endif
 #################
 .ifndef SKEIN_LOOP                          #configure loop unrolling
-_SKEIN_LOOP       =   2                     #default is fully unrolled for 256/512, twice for 1024
+_SKEIN_LOOP       =   0                     #default is fully unrolled for 256/512, twice for 1024
 .else
 _SKEIN_LOOP       = SKEIN_LOOP
   .irp _NN_,%_SKEIN_LOOP                #only display loop unrolling if default changed on command line
