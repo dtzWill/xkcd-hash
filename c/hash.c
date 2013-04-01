@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -40,7 +41,7 @@ void init_goalbits() {
 static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
                               "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                               "0123456789";
-const unsigned charset_size = sizeof(charset) - 1;
+const uint64_t charset_size = sizeof(charset) - 1;
 
 void gen_rand(char *str, size_t len) {
   for (size_t i = 0; i < len; ++i)
@@ -64,10 +65,22 @@ static inline int hamming_dist(unsigned char *s1, unsigned char *s2,
   return dist;
 }
 
-volatile int global_best = 100000000;
 
-volatile int global_count = 0;
-volatile int global_done = 0;
+pthread_mutex_t global_lock;
+
+int global_best = 100000000;
+uint64_t global_count = 0;
+int global_done = 0;
+
+time_t global_start;
+
+void lock() {
+  pthread_mutex_lock(&global_lock);
+}
+
+void unlock() {
+  pthread_mutex_unlock(&global_lock);
+}
 
 void *search(void *unused) {
   char str[LEN + 1];
@@ -95,10 +108,12 @@ void *search(void *unused) {
           if (d < best) {
             best = d;
 
+            lock();
             if (d < global_best) {
               global_best = d;
               printf("%d - '%s'\n", d, str);
             }
+            unlock();
           }
 
         }
@@ -108,19 +123,21 @@ void *search(void *unused) {
     if (!counting) continue;
 
     const size_t iters = 30;
-    if (count++ == iters) {
+    if (++count == iters) {
       counting = 0;
 
-      unsigned t = time(NULL) - start;
-      const size_t full_count =
+      time_t end = time(NULL);
+      int elapsed = end - global_start;
+      const uint64_t full_count =
           iters * (charset_size * charset_size * charset_size);
-      // printf("Thread throughput ~= %f hash/S\n", ((double)(full_count)) / t);
 
+      lock();
       global_count += full_count;
       if (++global_done == NUM_THREADS) {
         printf("\n*** Total throughput ~= %f hash/S\n\n",
-               ((double)(global_count)) / t);
+               ((double)(global_count)) / elapsed);
       }
+      unlock();
     }
   }
 }
@@ -134,6 +151,8 @@ int main(int argc, char ** argv) {
   srand(time(NULL));
 
   init_goalbits();
+
+  global_start = time(NULL);
 
   pthread_t threads[NUM_THREADS];
   for (int i = 0; i < NUM_THREADS; ++i)
