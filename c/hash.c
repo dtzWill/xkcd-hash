@@ -71,6 +71,9 @@ void *search(void *unused) {
 
   char hash[128];
   int best = global_best;
+  time_t start = time(NULL);
+  size_t count = 0;
+  char counting = 1;
   while (1) {
     // Generate random string, minus last 3 characters
     gen_rand(str, LEN - 3);
@@ -93,8 +96,20 @@ void *search(void *unused) {
               printf("%d - '%s'\n", d, str);
             }
           }
+
         }
       }
+    }
+
+    if (!counting) continue;
+
+    const size_t iters = 30;
+    if (count++ == iters) {
+      time_t end = time(NULL);
+      counting = 0;
+      printf("Throughput ~= %g hash/S\n",
+             ((double) iters * (charset_size * charset_size * charset_size)) /
+             (end - start));
     }
   }
 }
