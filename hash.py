@@ -30,7 +30,7 @@ class Thread(Process):
         if dist < self.best:
             self.best = dist
 
-            if dist < best_global.value:
+            if dist < best_global.value: # XXX: Race
                 best_global.value = dist
                 print("{} bits - {} - hashes to {}".format(dist,b,hex_x))
 
@@ -47,8 +47,6 @@ class Thread(Process):
     def run(self):
         while True:
             self.testiter()
-
-
 
 for i in range(16):
     f = Thread()
