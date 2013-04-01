@@ -133,6 +133,7 @@ void *search(void *unused) {
 
       lock();
       global_count += full_count;
+      assert(global_count >= full_count);
       if (++global_done == NUM_THREADS) {
         printf("\n*** Total throughput ~= %f hash/S\n\n",
                ((double)(global_count)) / elapsed);
