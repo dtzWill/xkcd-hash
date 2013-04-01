@@ -9,6 +9,7 @@
 #include "skein/SHA3api_ref.h"
 
 const size_t LEN = 40;
+int NUM_THREADS;
 
 const char *goal =
     "5b4da95f5fa08280fc9879df44f418c8f9f12ba424b7757de02bbdfbae0d4c4fdf9317c80c"
@@ -65,6 +66,9 @@ static inline int hamming_dist(unsigned char *s1, unsigned char *s2,
 
 volatile int global_best = 100000000;
 
+volatile int global_count = 0;
+volatile int global_done = 0;
+
 void *search(void *unused) {
   char str[LEN + 1];
   str[LEN] = 0;
@@ -105,18 +109,25 @@ void *search(void *unused) {
 
     const size_t iters = 30;
     if (count++ == iters) {
-      time_t end = time(NULL);
       counting = 0;
-      printf("Throughput ~= %g hash/S\n",
-             ((double) iters * (charset_size * charset_size * charset_size)) /
-             (end - start));
+
+      unsigned t = time(NULL) - start;
+      const size_t full_count =
+          iters * (charset_size * charset_size * charset_size);
+      // printf("Thread throughput ~= %f hash/S\n", ((double)(full_count)) / t);
+
+      global_count += full_count;
+      if (++global_done == NUM_THREADS) {
+        printf("\n*** Total throughput ~= %f hash/S\n\n",
+               ((double)(global_count)) / t);
+      }
     }
   }
 }
 
 int main(int argc, char ** argv) {
   assert(argc > 1 && "Single argument: number of threads");
-  const int NUM_THREADS = atoi(argv[1]);
+  NUM_THREADS = atoi(argv[1]);
   assert(NUM_THREADS > 0);
   printf("Using %d threads...\n", NUM_THREADS);
 
