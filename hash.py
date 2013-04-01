@@ -5,8 +5,6 @@ from multiprocessing import Process, Value
 import string
 import random
 
-import sys
-
 def hamming_distance(s1, s2):
     assert len(s1) == len(s2)
     return sum(ch1 != ch2 for ch1, ch2 in zip(s1, s2))
@@ -37,9 +35,6 @@ def test(b):
 
 import itertools
 
-def id_generator(size=20, chars=string.ascii_uppercase + string.ascii_lowercase + string.digits):
-    return ''.join(random.choice(chars) for x in range(size))
-
 def randstr():
   return '%040x' % random.randrange(256**20)
 
@@ -49,28 +44,9 @@ class Thread(Process):
 
     def run(self):
         while True:
-            #t = id_generator()
             t = randstr()
             test(bytes(t,'ascii'))
-
-        #while True:
-        #    try:
-        #        t = self.queue.get_nowait()
-        #        test(t)
-        #    except:
-        #        pass
-
-            #self.queue.task_done()
 
 for i in range(16):
     f = Thread()
     f.start()
-
-
-#def bruteforce(charset, maxlength):
-#    return (''.join(candidate)
-#        for candidate in itertools.chain.from_iterable(itertools.product(charset, repeat=i)
-#        for i in range(1, maxlength + 1)))
-#
-#for attempt in bruteforce(string.ascii_lowercase+string.ascii_uppercase, 30):
-#    queue.put(bytes(attempt, 'ascii'))
