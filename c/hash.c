@@ -36,13 +36,14 @@ void init_goalbits() {
   printf("\n");
 }
 
-void gen_rand(char *str) {
-  static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
-                                "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                                "0123456789";
-  // TODO: Much faster (fewer calls to rand()!)
-  for (unsigned i = 0; i < LEN; ++i)
-    str[i] = charset[rand() % (sizeof(charset) - 1)];
+static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
+                              "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                              "0123456789";
+const unsigned charset_size = sizeof(charset) - 1;
+
+void gen_rand(char *str, size_t len) {
+  for (size_t i = 0; i < len; ++i)
+    str[i] = charset[rand() % charset_size];
 }
 
 static inline unsigned distance(unsigned x, unsigned y) {
@@ -71,17 +72,28 @@ void *search(void *unused) {
   char hash[128];
   int best = global_best;
   while (1) {
-    gen_rand(str);
+    // Generate random string, minus last 3 characters
+    gen_rand(str, LEN - 3);
 
-    Hash(1024, str, LEN * 8, hash);
+    // Which we enumerate through here:
+    for (int i = 0; i < charset_size; ++i) {
+      str[LEN - 3] = charset[i];
+      for (int j = 0; j < charset_size; ++j) {
+        str[LEN - 2] = charset[j];
+        for (int k = 0; k < charset_size; ++k) {
+          str[LEN - 1] = charset[k];
+          Hash(1024, str, LEN * 8, hash);
 
-    int d = hamming_dist(hash, goalbits, 128);
-    if (d < best) {
-      best = d;
+          int d = hamming_dist(hash, goalbits, 128);
+          if (d < best) {
+            best = d;
 
-      if (d < global_best) {
-        global_best = d;
-        printf("%d - '%s'\n", d, str);
+            if (d < global_best) {
+              global_best = d;
+              printf("%d - '%s'\n", d, str);
+            }
+          }
+        }
       }
     }
   }
