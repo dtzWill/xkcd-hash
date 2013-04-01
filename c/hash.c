@@ -1,8 +1,10 @@
 
+#include <assert.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
-#include <assert.h>
 
 #include "skein/SHA3api_ref.h"
 
@@ -51,15 +53,15 @@ static inline int hamming_dist(unsigned char *s1, unsigned char*s2, size_t len) 
   return dist;
 }
 
+volatile int global_best = 100000000;
+
 void search() {
   char str[LEN+1];
   str[LEN] = 0;
 
   char hash[128];
-  int best = 1000000;
-  //while (1) {
-  time_t start = time(NULL);
-  for (unsigned i = 0; i < 1000000; ++i) {
+  int best = global_best;
+  while (1) {
     gen_rand(str);
 
     Hash(1024, str, LEN*8, hash);
@@ -68,19 +70,31 @@ void search() {
     if (d < best) {
       best = d;
 
-      printf("%d - '%s'\n", d, str);
-    }
-    //#printf("%s\n", hash);
-  }
+      if (d < global_best) {
+        global_best = d;
+        printf("%d - '%s'\n", d, str);
+      }
 
-  time_t end = time(NULL);
-  printf("elapsed: %g\n", 1000000.0/(end-start));
+    }
+  }
 }
 
-int main() {
+int main(int argc, char ** argv) {
+  assert(argc > 1);
+  const int NUM_THREADS = atoi(argv[1]);
+  printf("Using %d threads...\n", NUM_THREADS);
+
   srand(time(NULL));
 
   init_goalbits();
 
-  search();
+  pthread_t threads[NUM_THREADS];
+  for (int i = 0; i < NUM_THREADS; ++i)
+    pthread_create(&threads[i], NULL, search, NULL);
+
+  for (int i = 0; i < NUM_THREADS; ++i)
+    pthread_join(threads[i], NULL);
+
+
+    
 }
