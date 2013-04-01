@@ -37,8 +37,11 @@ def test(b):
 
 import itertools
 
-def id_generator(size=25, chars=string.ascii_uppercase + string.ascii_lowercase + string.digits):
+def id_generator(size=20, chars=string.ascii_uppercase + string.ascii_lowercase + string.digits):
     return ''.join(random.choice(chars) for x in range(size))
+
+def randstr():
+  return '%040x' % random.randrange(256**20)
 
 class Thread(Process):
     def __init__(self):
@@ -46,7 +49,8 @@ class Thread(Process):
 
     def run(self):
         while True:
-            t = id_generator()
+            #t = id_generator()
+            t = randstr()
             test(bytes(t,'ascii'))
 
         #while True:
