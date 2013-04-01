@@ -62,7 +62,7 @@ class Thread(Process):
 
             #self.queue.task_done()
 
-for i in range(16):
+for i in range(8):
     f = Thread()
     f.start()
 
