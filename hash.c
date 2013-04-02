@@ -147,13 +147,32 @@ void *search(void *unused) {
   }
 }
 
+void seed() {
+  FILE *f = fopen("/etc/hostname", "r");
+  assert(f && "unable to open hostname!");
+  char *hostname = 0;
+  fscanf(f, "%ms", &hostname);
+  assert(hostname);
+  printf("Hostname=%s\n", hostname);
+  int seed;
+  Hash(sizeof(int) * 8, hostname, strlen(hostname) * 8, (uint8_t *)&seed);
+  seed += time(NULL);
+
+  fclose(f);
+  free(hostname);
+
+  printf("seed=%d\n", seed);
+
+  srand(seed);
+}
+
 int main(int argc, char ** argv) {
   assert(argc > 1 && "Single argument: number of threads");
   NUM_THREADS = atoi(argv[1]);
   assert(NUM_THREADS > 0);
   printf("Using %d threads...\n", NUM_THREADS);
 
-  srand(time(NULL));
+  seed();
 
   init_goalbits();
 
