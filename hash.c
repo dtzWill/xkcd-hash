@@ -85,60 +85,70 @@ void unlock() {
   pthread_mutex_unlock(&global_lock);
 }
 
+void check(hashState hs, char hash[1024], int*best, char *str, uint64_t *count) {
+  // Output hash into buffer
+  Final(&hs, hash);
+
+  // Evaluate, update local and global best
+  int d = hamming_dist(hash, goalbits, 128);
+  if (d < *best) {
+    *best = d;
+
+    lock();
+    if (d < global_best) {
+      global_best = d;
+      printf("%d - '%s'\n", d, str);
+    }
+    unlock();
+  }
+
+  (*count)++;
+}
+
 void *search(void *unused) {
-  char str[LEN + 9];
-  str[LEN] = 0;
+  char str[4*LEN+5];
   strcpy(str, "UIUC");
-  strcpy(str+LEN+4, "UIUC");
 
   char hash[128];
   int best = global_best;
   time_t start = time(NULL);
-  size_t count = 0;
+  uint64_t count = 0;
   char counting = 1;
   while (1) {
-    // Generate random string, minus last 3 characters
+    // Generate random string
     gen_rand(str+4, LEN);
+    memset(str+LEN+4,0, 3*LEN);
 
-    // Which we enumerate through here:
-    for (int i = 0; i < charset_size; ++i) {
-      str[LEN + 1] = charset[i];
-      for (int j = 0; j < charset_size; ++j) {
-        str[LEN + 2] = charset[j];
-        for (int k = 0; k < charset_size; ++k) {
-          str[LEN + 3] = charset[k];
-          Hash(1024, str, (LEN+8) * 8, hash);
+    // Hash first UIUC+LEN chars
+    hashState hs;
+    Init(&hs, 1024);
+    Update(&hs, str, (LEN+4)*8);
 
-          int d = hamming_dist(hash, goalbits, 128);
-          if (d < best) {
-            best = d;
+    // Check this hash, intentionally using copied hashState
+    check(hs, hash, &best, str, &count);
 
-            lock();
-            if (d < global_best) {
-              global_best = d;
-              printf("%d - '%s'\n", d, str);
-            }
-            unlock();
-          }
-
-        }
-      }
+    // Iteratively add more chars to the string,
+    // idea being hashing the extra character each time
+    // is cheaper (even if we need to keep copying the state)
+    for (unsigned i = 0; i < 3*LEN; ++i) {
+      char c = str[i];
+      str[LEN+4+i] = c;
+      Update(&hs, &c, 8);
+      check(hs, hash, &best, str, &count);
     }
 
     if (!counting) continue;
 
-    const size_t iters = 30;
-    if (++count == iters) {
+    const uint64_t iters = 10000000; // 10M
+    if (count > iters) {
       counting = 0;
 
       time_t end = time(NULL);
       int elapsed = end - global_start;
-      const uint64_t full_count =
-          iters * (charset_size * charset_size * charset_size);
 
       lock();
-      global_count += full_count;
-      assert(global_count >= full_count);
+      global_count += count;
+      assert(global_count >= count);
       if (++global_done == NUM_THREADS) {
         printf("\n*** Total throughput ~= %f hash/S\n\n",
                ((double)(global_count)) / elapsed);
