@@ -9,7 +9,7 @@
 
 #include "skein/SHA3api_ref.h"
 
-const size_t LEN = 40;
+const size_t LEN = 120;
 int NUM_THREADS;
 
 const char *goal =
@@ -85,8 +85,10 @@ void unlock() {
 }
 
 void *search(void *unused) {
-  char str[LEN + 1];
+  char str[LEN + 9];
   str[LEN] = 0;
+  strcpy(str, "UIUC");
+  strcpy(str+LEN+4, "UIUC");
 
   char hash[128];
   int best = global_best;
@@ -95,16 +97,16 @@ void *search(void *unused) {
   char counting = 1;
   while (1) {
     // Generate random string, minus last 3 characters
-    gen_rand(str, LEN - 3);
+    gen_rand(str+4, LEN);
 
     // Which we enumerate through here:
     for (int i = 0; i < charset_size; ++i) {
-      str[LEN - 3] = charset[i];
+      str[LEN + 1] = charset[i];
       for (int j = 0; j < charset_size; ++j) {
-        str[LEN - 2] = charset[j];
+        str[LEN + 2] = charset[j];
         for (int k = 0; k < charset_size; ++k) {
-          str[LEN - 1] = charset[k];
-          Hash(1024, str, LEN * 8, hash);
+          str[LEN + 3] = charset[k];
+          Hash(1024, str, (LEN+8) * 8, hash);
 
           int d = hamming_dist(hash, goalbits, 128);
           if (d < best) {
