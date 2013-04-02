@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/utsname.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "skein/SHA3api_ref.h"
 
@@ -46,6 +47,57 @@ static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
 
 const uint64_t charset_size = sizeof(charset) - 1;
 
+typedef struct
+{
+  uint_t I,J;                         /* RC4 vars */
+  u08b_t state[256];
+} prng_state_t;
+
+void randBytes(prng_state_t *prng, void *dst, uint_t byteCnt)
+{
+  u08b_t a,b;
+  u08b_t *d = (u08b_t *) dst;
+
+  for (;byteCnt;byteCnt--,d++)        /* run RC4  */
+  {
+    prng->I  = (prng->I+1) & 0xFF;
+    a        =  prng->state[prng->I];
+    prng->J  = (prng->J+a) & 0xFF;
+    b        =  prng->state[prng->J];
+    prng->state[prng->I] = b;
+    prng->state[prng->J] = a;
+    *d       =  charset[prng->state[(a+b) & 0xFF] % charset_size];
+  }
+}
+
+/* init the (RC4-based) prng */
+void Rand_Init(prng_state_t *prng, u64b_t seed)
+{
+  uint_t i,j;
+  u08b_t tmp[512];
+
+  /* init the "key" in an endian-independent fashion */
+  for (i=0;i<8;i++)
+    tmp[i] = (u08b_t) (seed >> (8*i));
+
+  /* initialize the permutation */
+  for (i=0;i<256;i++)
+    prng->state[i]=(u08b_t) i;
+
+  /* now run the RC4 key schedule */
+  for (i=j=0;i<256;i++)
+  {
+    j = (j + prng->state[i] + tmp[i%8]) & 0xFF;
+    tmp[256]      = prng->state[i];
+    prng->state[i] = prng->state[j];
+    prng->state[j] = tmp[256];
+  }
+  prng->I = prng->J = 0;  /* init I,J variables for RC4 */
+
+  /* discard initial keystream before returning */
+  randBytes(prng,tmp,sizeof(tmp));
+}
+
 void gen_rand(char *str, size_t len) {
   for (size_t i = 0; i < len; ++i)
     str[i] = charset[rand() % charset_size];
@@ -68,24 +120,13 @@ static inline int hamming_dist(unsigned char *s1, unsigned char *s2,
   return dist;
 }
 
-
-pthread_mutex_t global_lock;
-
 int global_best = 100000000;
 uint64_t global_count = 0;
 int global_done = 0;
 
 time_t global_start;
 
-void lock() {
-  pthread_mutex_lock(&global_lock);
-}
-
-void unlock() {
-  pthread_mutex_unlock(&global_lock);
-}
-
-void check(hashState hs, char hash[1024], int*best, char *str, uint64_t *count) {
+void check(hashState hs, char hash[1024], int*best, char *str) {
   // Output hash into buffer
   Final(&hs, hash);
 
@@ -94,18 +135,18 @@ void check(hashState hs, char hash[1024], int*best, char *str, uint64_t *count) 
   if (d < *best) {
     *best = d;
 
-    lock();
-    if (d < global_best) {
-      global_best = d;
-      printf("%d - '%s'\n", d, str);
-    }
-    unlock();
-  }
+  uint32_t local_best = global_best;
+    while (d < local_best) {
+      if (__sync_bool_compare_and_swap(&global_best, local_best, d)) {
+        printf("%d - '%s'\n", d, str);
+      }
 
-  (*count)++;
+      local_best = global_best;
+    }
+  }
 }
 
-void *search(void *unused) {
+void *search(void *arg) {
   char str[4*LEN+5];
   strcpy(str, "UIUC");
 
@@ -113,10 +154,14 @@ void *search(void *unused) {
   int best = global_best;
   time_t start = time(NULL);
   uint64_t count = 0;
-  char counting = 1;
+  prng_state_t prng;
+  Rand_Init(&prng, start ^ (uintptr_t)&count);
+  volatile uint64_t **counter = (volatile uint64_t **)arg;
+  *counter = &count;
+
   while (1) {
     // Generate random string
-    gen_rand(str+4, LEN);
+    randBytes(&prng, str+4, LEN);
     memset(str+LEN+4,0, 3*LEN);
 
     // Hash first UIUC+LEN chars
@@ -125,7 +170,8 @@ void *search(void *unused) {
     Update(&hs, str, (LEN+4)*8);
 
     // Check this hash, intentionally using copied hashState
-    check(hs, hash, &best, str, &count);
+    check(hs, hash, &best, str);
+    ++count;
 
     // Iteratively add more chars to the string,
     // idea being hashing the extra character each time
@@ -134,26 +180,8 @@ void *search(void *unused) {
       char c = str[i];
       str[LEN+4+i] = c;
       Update(&hs, &c, 8);
-      check(hs, hash, &best, str, &count);
-    }
-
-    if (!counting) continue;
-
-    const uint64_t iters = 10000000; // 10M
-    if (count > iters) {
-      counting = 0;
-
-      time_t end = time(NULL);
-      int elapsed = end - global_start;
-
-      lock();
-      global_count += count;
-      assert(global_count >= count);
-      if (++global_done == NUM_THREADS) {
-        printf("\n*** Total throughput ~= %f hash/S\n\n",
-               ((double)(global_count)) / elapsed);
-      }
-      unlock();
+      check(hs, hash, &best, str);
+      ++count;
     }
   }
 }
@@ -174,6 +202,15 @@ void seed() {
   srand(seed);
 }
 
+uint64_t get_counters(volatile uint64_t **counters, int thread_count) {
+  uint64_t total = 0;
+  for (int i = 0; i < thread_count; ++i) {
+    total += *(counters[i]);
+  }
+
+  return total;
+}
+
 int main(int argc, char ** argv) {
   assert(argc > 1 && "Single argument: number of threads");
   NUM_THREADS = atoi(argv[1]);
@@ -186,9 +223,30 @@ int main(int argc, char ** argv) {
 
   global_start = time(NULL);
 
+  volatile uint64_t *counters[NUM_THREADS];
   pthread_t threads[NUM_THREADS];
-  for (int i = 0; i < NUM_THREADS; ++i)
-    pthread_create(&threads[i], NULL, search, NULL);
+  for (int i = 0; i < NUM_THREADS; ++i) {
+    counters[i] = NULL;
+    pthread_create(&threads[i], NULL, search, &counters[i]);
+  }
+
+  for (int i = 0; i < NUM_THREADS; ++i) {
+    while (counters[i] == NULL) sleep(1);
+  }
+
+  uint64_t start_total;
+  uint64_t end_total;
+  while (1) {
+    start_total = get_counters(counters, NUM_THREADS);
+    time_t start_seconds = time(NULL);
+    sleep(10);
+    end_total = get_counters(counters, NUM_THREADS);
+    time_t end_seconds = time(NULL);
+
+    uint64_t total = end_total - start_total;
+    time_t elapsed = end_seconds - start_seconds;
+    printf("Calculating %f hashes per second\n", (double)total / elapsed);
+  }
 
   for (int i = 0; i < NUM_THREADS; ++i)
     pthread_join(threads[i], NULL);
