@@ -47,7 +47,7 @@
 #endif
 
 #ifndef SKEIN_LOOP
-#define SKEIN_LOOP 000                          /* default: unroll 256 and 512, but not 1024 */
+#define SKEIN_LOOP 001                          /* default: unroll 256 and 512, but not 1024 */
 #endif
 
 #define BLK_BITS        (WCNT*64)               /* some useful definitions for code here */

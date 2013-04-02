@@ -10,7 +10,7 @@
 
 #include "skein/SHA3api_ref.h"
 
-#define LEN (120U)
+const size_t LEN = 120;
 int NUM_THREADS;
 
 const char *goal =
@@ -44,7 +44,7 @@ static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
                               "0123456789"
                               "_-.*";
 
-#define charset_size (sizeof(charset) - 1)
+const uint64_t charset_size = sizeof(charset) - 1;
 
 void gen_rand(char *str, size_t len) {
   for (size_t i = 0; i < len; ++i)
@@ -85,83 +85,60 @@ void unlock() {
   pthread_mutex_unlock(&global_lock);
 }
 
-void check(hashState *hs, char hash[1024], int*best, char *str, uint64_t *count, int id) {
-  // Output hash into buffer
-  Final(hs, hash);
-
-  // Evaluate, update local and global best
-  int d = hamming_dist(hash, goalbits, 128);
-  if (d < *best) {
-    *best = d;
-
-    lock();
-    if (d < global_best) {
-      global_best = d;
-      printf("%d - '%s' (len=%d, id=%d)\n", d, str, strlen(str), id);
-    }
-    unlock();
-  }
-
-  (*count)++;
-}
-
 void *search(void *unused) {
-  char str[LEN + 7] = {};
+  char str[LEN + 9];
+  str[LEN] = 0;
   strcpy(str, "UIUC");
+  strcpy(str+LEN+4, "UIUC");
 
   char hash[128];
   int best = global_best;
   time_t start = time(NULL);
-  uint64_t count = 0;
+  size_t count = 0;
   char counting = 1;
   while (1) {
-    // Generate random string
-    gen_rand(str + 4, LEN);
-    str[LEN + 4] = 0;
-    str[LEN + 5] = 0;
+    // Generate random string, minus last 3 characters
+    gen_rand(str+4, LEN);
 
-    // Hash first UIUC+LEN chars
-    hashState hs;
-    Init(&hs, 1024);
-    Update(&hs, str, (LEN + 4) * 8);
+    // Which we enumerate through here:
+    for (int i = 0; i < charset_size; ++i) {
+      str[LEN + 1] = charset[i];
+      for (int j = 0; j < charset_size; ++j) {
+        str[LEN + 2] = charset[j];
+        for (int k = 0; k < charset_size; ++k) {
+          str[LEN + 3] = charset[k];
+          Hash(1024, str, (LEN+8) * 8, hash);
 
-    // Make many copies of this
-    hashState states[charset_size * charset_size];
-    for (unsigned i = 0; i < charset_size; ++i) {
-      for (unsigned j = 0; j < charset_size; ++j) {
-        int id = i * charset_size + j;
-        memcpy(&states[id], &hs, sizeof(hs));
-      }
-    }
+          int d = hamming_dist(hash, goalbits, 128);
+          if (d < best) {
+            best = d;
 
-    // Check the original hash
-    check(&hs, hash, &best, str, &count, -1);
+            lock();
+            if (d < global_best) {
+              global_best = d;
+              printf("%d - '%s'\n", d, str);
+            }
+            unlock();
+          }
 
-    // Try adding each 2 letter suffix, using copies hash states
-    for (unsigned i = 0; i < charset_size; ++i) {
-      for (unsigned j = 0; j < charset_size; ++j) {
-        char chars[] = { charset[i], charset[j] };
-        str[LEN + 4] = chars[0];
-        str[LEN + 5] = chars[1];
-        int id = i * charset_size + j;
-        hashState *s = &states[id];
-        Update(s, chars, 16);
-        check(s, hash, &best, str, &count, id);
+        }
       }
     }
 
     if (!counting) continue;
 
-    const uint64_t iters = 10000000; // 10M
-    if (count > iters) {
+    const size_t iters = 30;
+    if (++count == iters) {
       counting = 0;
 
       time_t end = time(NULL);
       int elapsed = end - global_start;
+      const uint64_t full_count =
+          iters * (charset_size * charset_size * charset_size);
 
       lock();
-      global_count += count;
-      assert(global_count >= count);
+      global_count += full_count;
+      assert(global_count >= full_count);
       if (++global_done == NUM_THREADS) {
         printf("\n*** Total throughput ~= %f hash/S\n\n",
                ((double)(global_count)) / elapsed);
