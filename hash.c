@@ -85,7 +85,7 @@ void unlock() {
   pthread_mutex_unlock(&global_lock);
 }
 
-void check(hashState *hs, char hash[1024], int*best, char *str, uint64_t *count) {
+void check(hashState *hs, char hash[1024], int*best, char *str, uint64_t *count, int id) {
   // Output hash into buffer
   Final(hs, hash);
 
@@ -97,7 +97,7 @@ void check(hashState *hs, char hash[1024], int*best, char *str, uint64_t *count)
     lock();
     if (d < global_best) {
       global_best = d;
-      printf("%d - '%s' (len=%d)\n", d, str, strlen(str));
+      printf("%d - '%s' (len=%d, id=%d)\n", d, str, strlen(str), id);
     }
     unlock();
   }
@@ -126,10 +126,16 @@ void *search(void *unused) {
     Update(&hs, str, (LEN + 4) * 8);
 
     // Make many copies of this
-    hashState states[charset_size * charset_size] = { hs, };
+    hashState states[charset_size * charset_size];
+    for (unsigned i = 0; i < charset_size; ++i) {
+      for (unsigned j = 0; j < charset_size; ++j) {
+        int id = i * charset_size + j;
+        memcpy(&states[id], &hs, sizeof(hs));
+      }
+    }
 
     // Check the original hash
-    check(&hs, hash, &best, str, &count);
+    check(&hs, hash, &best, str, &count, -1);
 
     // Try adding each 2 letter suffix, using copies hash states
     for (unsigned i = 0; i < charset_size; ++i) {
@@ -137,9 +143,10 @@ void *search(void *unused) {
         char chars[] = { charset[i], charset[j] };
         str[LEN + 4] = chars[0];
         str[LEN + 5] = chars[1];
-        hashState *s = &states[i * charset_size + j];
+        int id = i * charset_size + j;
+        hashState *s = &states[id];
         Update(s, chars, 16);
-        check(s, hash, &best, str, &count);
+        check(s, hash, &best, str, &count, id);
       }
     }
 
