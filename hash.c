@@ -10,7 +10,7 @@
 
 #include "skein/SHA3api_ref.h"
 
-const size_t LEN = 120;
+#define LEN (120U)
 int NUM_THREADS;
 
 const char *goal =
@@ -44,7 +44,7 @@ static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
                               "0123456789"
                               "_-.*";
 
-const uint64_t charset_size = sizeof(charset) - 1;
+#define charset_size (sizeof(charset) - 1)
 
 void gen_rand(char *str, size_t len) {
   for (size_t i = 0; i < len; ++i)
@@ -85,9 +85,9 @@ void unlock() {
   pthread_mutex_unlock(&global_lock);
 }
 
-void check(hashState hs, char hash[1024], int*best, char *str, uint64_t *count) {
+void check(hashState *hs, char hash[1024], int*best, char *str, uint64_t *count) {
   // Output hash into buffer
-  Final(&hs, hash);
+  Final(hs, hash);
 
   // Evaluate, update local and global best
   int d = hamming_dist(hash, goalbits, 128);
@@ -97,7 +97,7 @@ void check(hashState hs, char hash[1024], int*best, char *str, uint64_t *count) 
     lock();
     if (d < global_best) {
       global_best = d;
-      printf("%d - '%s'\n", d, str);
+      printf("%d - '%s' (len=%d)\n", d, str, strlen(str));
     }
     unlock();
   }
@@ -106,7 +106,7 @@ void check(hashState hs, char hash[1024], int*best, char *str, uint64_t *count) 
 }
 
 void *search(void *unused) {
-  char str[4*LEN+5];
+  char str[LEN + 7] = {};
   strcpy(str, "UIUC");
 
   char hash[128];
@@ -116,25 +116,31 @@ void *search(void *unused) {
   char counting = 1;
   while (1) {
     // Generate random string
-    gen_rand(str+4, LEN);
-    memset(str+LEN+4,0, 3*LEN);
+    gen_rand(str + 4, LEN);
+    str[LEN + 4] = 0;
+    str[LEN + 5] = 0;
 
     // Hash first UIUC+LEN chars
     hashState hs;
     Init(&hs, 1024);
-    Update(&hs, str, (LEN+4)*8);
+    Update(&hs, str, (LEN + 4) * 8);
 
-    // Check this hash, intentionally using copied hashState
-    check(hs, hash, &best, str, &count);
+    // Make many copies of this
+    hashState states[charset_size * charset_size] = { hs, };
 
-    // Iteratively add more chars to the string,
-    // idea being hashing the extra character each time
-    // is cheaper (even if we need to keep copying the state)
-    for (unsigned i = 0; i < 3*LEN; ++i) {
-      char c = str[i];
-      str[LEN+4+i] = c;
-      Update(&hs, &c, 8);
-      check(hs, hash, &best, str, &count);
+    // Check the original hash
+    check(&hs, hash, &best, str, &count);
+
+    // Try adding each 2 letter suffix, using copies hash states
+    for (unsigned i = 0; i < charset_size; ++i) {
+      for (unsigned j = 0; j < charset_size; ++j) {
+        char chars[] = { charset[i], charset[j] };
+        str[LEN + 4] = chars[0];
+        str[LEN + 5] = chars[1];
+        hashState *s = &states[i * charset_size + j];
+        Update(s, chars, 16);
+        check(s, hash, &best, str, &count);
+      }
     }
 
     if (!counting) continue;
