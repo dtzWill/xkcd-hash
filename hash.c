@@ -19,7 +19,7 @@ const char *goal =
     "d7722886b78869826de916a79cf9c94cc79cd4347d24b567aa3e2390a573a373a48a5e6766"
     "40c79cc70197e1c5e7f902fb53ca1858b6";
 
-unsigned char goalbits[128];
+char goalbits[128];
 
 unsigned hex2dec(char c) {
   if (c >= '0' && c <= '9')
@@ -34,7 +34,7 @@ void init_goalbits() {
     unsigned char b1 = hex2dec(goal[2 * i]);
     unsigned char b2 = hex2dec(goal[2 * i + 1]);
     goalbits[i] = b1 << 4 | b2;
-    printf("%02x", goalbits[i]);
+    printf("%02x", (unsigned char)goalbits[i]);
   }
   printf("\n");
 }
@@ -55,8 +55,7 @@ static inline unsigned distance(unsigned x, unsigned y) {
   return __builtin_popcount(x ^ y);
 }
 
-static inline int hamming_dist(unsigned char *s1, unsigned char *s2,
-                               size_t len) {
+static inline int hamming_dist(char *s1, char *s2, size_t len) {
   unsigned steps = len / sizeof(unsigned);
   unsigned dist = 0;
 
@@ -93,7 +92,6 @@ void *search(void *unused) {
 
   char hash[128];
   int best = global_best;
-  time_t start = time(NULL);
   size_t count = 0;
   char counting = 1;
   while (1) {
@@ -107,7 +105,7 @@ void *search(void *unused) {
         str[LEN + 2] = charset[j];
         for (int k = 0; k < charset_size; ++k) {
           str[LEN + 3] = charset[k];
-          Hash(1024, str, (LEN+8) * 8, hash);
+          Hash(1024, (BitSequence *)str, (LEN + 8) * 8, (BitSequence *)hash);
 
           int d = hamming_dist(hash, goalbits, 128);
           if (d < best) {
@@ -156,7 +154,8 @@ void seed() {
   }
   printf("Hostname=%s\n", name.nodename);
   int seed;
-  Hash(sizeof(int) * 8, name.nodename, strlen(name.nodename) * 8, (uint8_t *)&seed);
+  Hash(sizeof(int) * 8, (BitSequence *)name.nodename, strlen(name.nodename) * 8,
+       (BitSequence *)&seed);
   seed += time(NULL);
 
   printf("seed=%d\n", seed);
