@@ -1,5 +1,5 @@
 
-#define _XOPEN_SOURCE 600
+#define _BSD_SOURCE
 
 #include <assert.h>
 #include <pthread.h>
@@ -9,6 +9,9 @@
 #include <string.h>
 #include <sys/utsname.h>
 #include <time.h>
+
+#include <sys/types.h>
+#include <bsd/stdlib.h>
 
 #include "skein/SHA3api_ref.h"
 
@@ -50,7 +53,7 @@ const uint64_t charset_size = sizeof(charset) - 1;
 
 void gen_rand(char *str, size_t len) {
   for (size_t i = 0; i < len; ++i)
-    str[i] = charset[random() % charset_size];
+    str[i] = charset[arc4random_uniform(charset_size)];
 }
 
 static inline unsigned distance(unsigned x, unsigned y) {
@@ -148,31 +151,11 @@ void *search(void *unused) {
   }
 }
 
-void seed() {
-  struct utsname name;
-  if (uname(&name) == -1) {
-    perror("uname");
-    exit(-1);
-  }
-  printf("Hostname=%s\n", name.nodename);
-  int seed;
-  Hash(sizeof(int) * 8, (BitSequence *)name.nodename, strlen(name.nodename) * 8,
-       (BitSequence *)&seed);
-  seed += time(NULL);
-
-  printf("seed=%d\n", seed);
-
-  static char state[256];
-  initstate(seed, state, 256);
-}
-
 int main(int argc, char ** argv) {
   assert(argc > 1 && "Single argument: number of threads");
   NUM_THREADS = atoi(argv[1]);
   assert(NUM_THREADS > 0);
   printf("Using %d threads...\n", NUM_THREADS);
-
-  seed();
 
   init_goalbits();
 
