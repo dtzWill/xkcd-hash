@@ -1,4 +1,6 @@
 
+#define _XOPEN_SOURCE 600
+
 #include <assert.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -48,7 +50,7 @@ const uint64_t charset_size = sizeof(charset) - 1;
 
 void gen_rand(char *str, size_t len) {
   for (size_t i = 0; i < len; ++i)
-    str[i] = charset[rand() % charset_size];
+    str[i] = charset[random() % charset_size];
 }
 
 static inline unsigned distance(unsigned x, unsigned y) {
@@ -123,7 +125,7 @@ void *search(void *unused) {
       }
     }
 
-    if (!counting) continue;
+    if (!counting) return NULL;
 
     const size_t iters = 30;
     if (++count == iters) {
@@ -160,7 +162,8 @@ void seed() {
 
   printf("seed=%d\n", seed);
 
-  srand(seed);
+  static char state[256];
+  initstate(seed, state, 256);
 }
 
 int main(int argc, char ** argv) {
