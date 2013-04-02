@@ -9,7 +9,7 @@
 
 #include "skein/SHA3api_ref.h"
 
-const size_t LEN = 40;
+const size_t LEN = 128;
 int NUM_THREADS;
 
 const char *goal =
