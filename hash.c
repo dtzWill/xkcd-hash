@@ -125,7 +125,7 @@ void *search(void *unused) {
       }
     }
 
-    if (!counting) return NULL;
+    if (!counting) continue;
 
     const size_t iters = 30;
     if (++count == iters) {
