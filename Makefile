@@ -8,7 +8,7 @@ ifneq ($(OS),Darwin)
 	CFLAGS += -march=native -mtune=native
 endif
 
-hash: hash.c skein/skein.c skein/SHA3api_ref.c skein/skein_block.c
+hash: hash.c skein/skein.c skein/SHA3api_ref.c skein/skein_block_x64.s
 	$(CC) $(CFLAGS) $^ -o $@ -lpthread
 
 clean:

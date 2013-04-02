@@ -967,14 +967,14 @@ rIdx_offs = tmpStk_1024
 #
 .macro r1024_Mix w0,w1,reg0,reg1,_RN0_,_Rn1_,op1
     addReg      \reg0 , \reg1                      #perform the MIX
-    RotL64      \reg1 , 1024,%((_RN0_) % 8),_Rn1_
+    RotL64      \reg1 , 1024,%((\_RN0_) % 8),\_Rn1_
     xorReg      \reg1 , \reg0
-.if ((_RN0_) && 3) == 3         #time to do key injection?
+.if ((\_RN0_ && 3) == 3)         #time to do key injection?
  .if _SKEIN_DEBUG
     movq       %\reg0 , xDebug_1024+8*w0(%rsp)     #save intermediate values for Debug_Round
     movq       %\reg1 , xDebug_1024+8*w1(%rsp)     # (before inline key injection)
  .endif
-_II_ = ((_RN0_)/4)+1            #injection count
+_II_ = ((\_RN0_)/4)+1            #injection count
  .if SKEIN_ASM_UNROLL && 1024   #here to do fully unrolled key injection
     addq        ksKey+ 8*((_II_+w0) % 17)(%rsp),%\reg0
     addq        ksKey+ 8*((_II_+w1) % 17)(%rsp),%\reg1
