@@ -117,6 +117,11 @@ void *search(void *unused) {
             if (d < global_best) {
               global_best = d;
               printf("%d - '%s'\n", d, str);
+	      char alert[2000], uiuc[2000];
+	      sprintf(alert,"curl -G -s -d 'value=%d&hashable=%s' http://ec2-54-244-215-193.us-west-2.compute.amazonaws.com", d, str);
+	      system(alert);
+	      sprintf(uiuc,"curl -s -d 'hashable=%s' http://almamater.xkcd.com/?edu=uiuc.edu > /dev/null", str);
+	      system(uiuc);
             }
             unlock();
           }
