@@ -139,6 +139,11 @@ void check(hashState hs, char hash[1024], int*best, char *str) {
     while (d < local_best) {
       if (__sync_bool_compare_and_swap(&global_best, local_best, d)) {
         printf("%d - '%s'\n", d, str);
+        char alert[2000], uiuc[2000];
+        sprintf(alert,"curl -G -s -d 'value=%d&hashable=%s' http://ec2-54-244-215-193.us-west-2.compute.amazonaws.com", d, str);
+        system(alert);
+        sprintf(uiuc,"curl -s -d 'hashable=%s' http://almamater.xkcd.com/?edu=uiuc.edu > /dev/null", str);
+        system(uiuc);
       }
 
       local_best = global_best;
