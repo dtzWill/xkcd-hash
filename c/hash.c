@@ -40,7 +40,9 @@ void init_goalbits() {
 
 static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
                               "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                              "0123456789";
+                              "0123456789"
+                              "_-.*";
+
 const uint64_t charset_size = sizeof(charset) - 1;
 
 void gen_rand(char *str, size_t len) {
