@@ -1,7 +1,7 @@
 
 CC=gcc
 CFLAGS  = -std=c99 -O3 -fno-strict-aliasing
-CFLAGS += -Wall -Werror
+CFLAGS += -Wall -Werror -Wno-unused-result
 
 OS := $(shell uname -s)
 ifneq ($(OS),Darwin)
