@@ -1,10 +1,11 @@
 
 #include <assert.h>
 #include <pthread.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/utsname.h>
 #include <time.h>
 
 #include "skein/SHA3api_ref.h"
@@ -148,18 +149,15 @@ void *search(void *unused) {
 }
 
 void seed() {
-  FILE *f = fopen("/etc/hostname", "r");
-  assert(f && "unable to open hostname!");
-  char *hostname = 0;
-  fscanf(f, "%ms", &hostname);
-  assert(hostname);
-  printf("Hostname=%s\n", hostname);
+  struct utsname name;
+  if (uname(&name) == -1) {
+    perror("uname");
+    exit(-1);
+  }
+  printf("Hostname=%s\n", name.nodename);
   int seed;
-  Hash(sizeof(int) * 8, hostname, strlen(hostname) * 8, (uint8_t *)&seed);
+  Hash(sizeof(int) * 8, name.nodename, strlen(name.nodename) * 8, (uint8_t *)&seed);
   seed += time(NULL);
-
-  fclose(f);
-  free(hostname);
 
   printf("seed=%d\n", seed);
 
