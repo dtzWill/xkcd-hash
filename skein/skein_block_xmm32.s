@@ -302,8 +302,8 @@ _STK_OFFS_  =   0
 # macros to help debug internals
 #
 .if _SKEIN_DEBUG
-    .extern   _Skein_Show_Block   #calls to C routines
-    .extern   _Skein_Show_Round
+    .extern   Skein_Show_Block   #calls to C routines
+    .extern   Skein_Show_Round
 #
 SKEIN_RND_SPECIAL       =   1000
 SKEIN_RND_KEY_INITIAL   =   SKEIN_RND_SPECIAL+0
@@ -331,7 +331,7 @@ SKEIN_RND_FEED_FWD      =   SKEIN_RND_SPECIAL+2
     pushl   ctxPtr(%ebx)            #ctx_hdr_ptr
     movl    $\BLK_BITS,%eax
     pushl   %eax                    #bits
-    call    _Skein_Show_Block
+    call    Skein_Show_Block
     addl    $7*4,%esp               #discard parameter space on stack
     popal                           #restore regs
 #
@@ -347,7 +347,7 @@ SKEIN_RND_FEED_FWD      =   SKEIN_RND_SPECIAL+2
     call    _Put_XMM_\BLK_BITS
   .endif
     pushal                          #save all regs
-  .if R <> SKEIN_RND_FEED_FWD
+  .if \R <> SKEIN_RND_FEED_FWD
     leal    32+X_stk(%esp),%eax     #adjust offset by 32 for pushal
   .else
     movl    ctxPtr(%ebx),%eax
@@ -357,13 +357,13 @@ SKEIN_RND_FEED_FWD      =   SKEIN_RND_SPECIAL+2
   .if (SKEIN_ASM_UNROLL && \BLK_BITS) || (\R >= SKEIN_RND_SPECIAL)
     movl    $\R,%eax
   .else     #compute round number from edx, R
-    leal    1+(((\R)-1) && 3)(,%edx,4),%eax
+    leal    1+(((\R)-1) & 3)(,%edx,4),%eax
   .endif
     pushl   %eax                    #round number
     pushl   ctxPtr(%ebx)            #ctx_hdr_ptr
     movl    $\BLK_BITS,%eax
     pushl   %eax                    #bits
-    call    _Skein_Show_Round
+    call    Skein_Show_Round
     addl    $4*4,%esp               #discard parameter space on stack
     popal                           #restore regs
   .if \saveRegs
@@ -599,7 +599,7 @@ C_label  Skein_256_Unroll_Cnt
 # MACRO: one round
 #
 .macro R_512_Round _RR_, a0,a1,Ra, b0,b1,Rb, c0,c1,Rc, d0,d1,Rd
-  .irp _qq_,%((\_RR_) && 7)
+  .irp _qq_,%((\_RR_) & 7)
 _Ra_ = RC_512_\_qq_&&_\Ra
 _Rb_ = RC_512_\_qq_&&_\Rb
 _Rc_ = RC_512_\_qq_&&_\Rc
@@ -858,7 +858,7 @@ _r1_ =       6
     movq  X_stk+8*(\x1)(%esp),%xmm6
   .endif
   # do the mix
-  .irp _rx_,%((rotIdx0) && 7)
+  .irp _rx_,%((\rotIdx0) & 7)
 _Rc_ = RC_1024_\_rx_&&_\rotIdx1  #rotation constant
   .endr
   .irp _x0_,%_r0_
@@ -879,8 +879,8 @@ _Rc_ = RC_1024_\_rx_&&_\rotIdx1  #rotation constant
     movq    %xmm6,X_stk+8*(\x1)(%esp)
   .endif
   # debug output
-  .if _SKEIN_DEBUG && (\_debug_)
-    Skein_Debug_Round 1024,%((\RotIdx0)+1),SAVE_REGS
+  .if (_SKEIN_DEBUG && (\_debug_))
+    Skein_Debug_Round 1024, %((\rotIdx0)+1), SAVE_REGS
   .endif
 .endm
 #################
