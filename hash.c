@@ -12,8 +12,14 @@
 
 #include "skein/SHA3api_ref.h"
 
-const size_t LEN = 120;
+const size_t LEN = 128;
 int NUM_THREADS;
+
+const char prefix[] = "UIUC.edu-";
+const char suffix[] = "-UIUC.edu";
+
+// How many characters do we exhaustively search for each random suffix?
+const size_t SEARCH_CHARS = 6;
 
 const char *goal =
     "5b4da95f5fa08280fc9879df44f418c8f9f12ba424b7757de02bbdfbae0d4c4fdf9317c80c"
@@ -87,58 +93,65 @@ void unlock() {
 }
 
 void *search(void *unused) {
-  char str[LEN + 9];
+  char str[LEN + 1];
+  const size_t prelen = strlen(prefix);
+  const size_t sufflen = strlen(suffix);
+  const size_t suffstart= LEN-sufflen;
   str[LEN] = 0;
-  strcpy(str, "UIUC");
-  strcpy(str+LEN+4, "UIUC");
+  strcpy(str, prefix);
+  strcpy(str + suffstart, suffix);
 
   char hash[128];
   int best = global_best;
-  size_t count = 0;
+  uint64_t count = 0;
   char counting = 1;
+
+start:
+  gen_rand(str + prelen, LEN - prelen - sufflen - SEARCH_CHARS);
+
+  // Iteration index array
+  unsigned idx[SEARCH_CHARS];
+  memset(idx, 0, sizeof(idx));
+  // Initialize enumeration part of string to first letter in charset
+  char *iterstr = str + suffstart - SEARCH_CHARS;
+  memset(iterstr, charset[0], SEARCH_CHARS);
+
   while (1) {
-    // Generate random string, minus last 3 characters
-    gen_rand(str+4, LEN);
+    // Try string in current form
+    Hash(1024, (BitSequence *)str, LEN * 8, (BitSequence *)hash);
 
-    // Which we enumerate through here:
-    for (int i = 0; i < charset_size; ++i) {
-      str[LEN + 1] = charset[i];
-      for (int j = 0; j < charset_size; ++j) {
-        str[LEN + 2] = charset[j];
-        for (int k = 0; k < charset_size; ++k) {
-          str[LEN + 3] = charset[k];
-          Hash(1024, (BitSequence *)str, (LEN + 8) * 8, (BitSequence *)hash);
+    int d = hamming_dist(hash, goalbits, 128);
+    if (d < best) {
+      best = d;
 
-          int d = hamming_dist(hash, goalbits, 128);
-          if (d < best) {
-            best = d;
-
-            lock();
-            if (d < global_best) {
-              global_best = d;
-              printf("%d - '%s'\n", d, str);
-            }
-            unlock();
-          }
-
-        }
+      lock();
+      if (d < global_best) {
+        global_best = d;
+        printf("%d - '%s'\n", d, str);
       }
+      unlock();
     }
 
-    if (!counting) continue;
+    // Increment string index array, updating str as we go
+    int cur = 0;
+    while (++idx[cur] >= charset_size) {
+      idx[cur] = 0;
+      iterstr[cur] = charset[idx[cur]];
+      if (++cur == SEARCH_CHARS)
+        goto start;
+    }
+    iterstr[cur] = charset[idx[cur]];
 
-    const size_t iters = 30;
-    if (++count == iters) {
+    const uint64_t iters = 20000000; // 10M
+    if (counting && ++count == iters) {
       counting = 0;
 
       time_t end = time(NULL);
       int elapsed = end - global_start;
-      const uint64_t full_count =
-          iters * (charset_size * charset_size * charset_size);
 
       lock();
-      global_count += full_count;
-      assert(global_count >= full_count);
+      global_count += count;
+      assert(global_count >= count);
       if (++global_done == NUM_THREADS) {
         printf("\n*** Total throughput ~= %f hash/S\n\n",
                ((double)(global_count)) / elapsed);
