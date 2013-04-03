@@ -142,7 +142,7 @@ start:
     }
     iterstr[cur] = charset[idx[cur]];
 
-    const uint64_t iters = 20000000; // 10M
+    const uint64_t iters = 1 << 24; // ~16M
     if (counting && ++count == iters) {
       counting = 0;
 
