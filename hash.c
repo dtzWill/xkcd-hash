@@ -154,6 +154,7 @@ start:
       if (d < global_best) {
         global_best = d;
         printf("%d - '%s'\n", d, str);
+        fflush(stdout);
       }
       unlock();
     }
