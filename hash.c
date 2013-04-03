@@ -64,6 +64,9 @@ void gen_rand(char *str, size_t len) {
 }
 
 static inline unsigned distance(unsigned x, unsigned y) {
+  // XXX: This may be slower than bit twiddling on some archs w/o popcnt.
+  // Also, __builtin_popcountll is faster when it's a native instruction,
+  // but leaving this as-is for wider compatability.
   return __builtin_popcount(x ^ y);
 }
 
