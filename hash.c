@@ -1,56 +1,9 @@
 //===-- hash.c ------------------------------------------------------------===//
 //
 // XKCD Hash SKein1024 brute forcing.
+// (c) 2013 Will Dietz, <w@wdtz.org>
 //
-//===-- Overview ----------------------------------------------------------===//
-//
-// Goal is to find input strings such that skein1024(input)
-// is as 'close' as possible to the given value.
-//
-// This is for XKCD's April 1st comic: http://xkcd.com/1193/
-//
-//===-- Usage -------------------------------------------------------------===//
-//
-// make
-// ./hash <num_threads>
-//
-// If unspecified, num_threads is set to the number of available processors.
-//
-//===-- String Generation -------------------------------------------------===//
-//
-// Our string generation is accomplished by periodically filling
-// the majority of the string with random characters from our
-// character set, and exhaustively trying all possibilities
-// for the remaining characters.
-//
-// Generating random strings is expensive, requiring many
-// calls to random().  The exhaustive search is done to amortize
-// this cost, while still mostly generating random strings.
-//
-// The repeated random generation is an attempt to prevent
-// two identical starting states from causing hosts to compute
-// purely redundant calculations.  This way, happening to output
-// the same 128 integers is not taken to be a reflection
-// of having the same internal PRNG state.
-//
-// Strings of length 128 are used to match the 1024bit block size,
-// which means we can hash them faster.
-//
-// For fun, we hardcode into our candidate inputs a vanity prefix
-// and suffix.  This also aids in demonstrating who was responsible
-// for generating a particular string.
-//
-//===-- Compatability -----------------------------------------------------===//
-//
-// This should work on most 32/64bit machines, and has been reported
-// to work well on both linux and mac machines.
-//
-// On Linux, we use (fixed from reference versions) assembly versions
-// of the most compute-intensive part of the skein hash calculation,
-// but are unable to use this on Mac's due to not supporting gas assembly.
-//
-// Porting this to windows should be straightforward, although
-// things like the way we seed the PRNG will need to be changed.
+// Please see included README.md for usage and high-level documentation.
 //
 //===----------------------------------------------------------------------===//
 
@@ -101,6 +54,7 @@ char GOAL_BITS[128] = {
   0xe1, 0xc5, 0xe7, 0xf9, 0x02, 0xfb, 0x53, 0xca, 0x18, 0x58, 0xb6
 };
 
+
 //===-- Global state ------------------------------------------------------===//
 
 // Number of threads being used, set by main().
@@ -124,11 +78,11 @@ int global_done = 0;
 // When did this program start?
 time_t global_start;
 
+//===-- Utility Functions -------------------------------------------------===//
+
 // Convenience wrappers for pthread functions.
 void lock() { pthread_mutex_lock(&global_lock); }
 void unlock() { pthread_mutex_unlock(&global_lock); }
-
-//===-- Utility Functions -------------------------------------------------===//
 
 // Populate 'str' with 'len' random characters from the character set.
 void gen_rand(char *str, size_t len) {
