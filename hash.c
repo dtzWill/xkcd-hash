@@ -1,3 +1,58 @@
+//===-- hash.c ------------------------------------------------------------===//
+//
+// XKCD Hash SKein1024 brute forcing.
+//
+//===-- Overview ----------------------------------------------------------===//
+//
+// Goal is to find input strings such that skein1024(input)
+// is as 'close' as possible to the given value.
+//
+// This is for XKCD's April 1st comic: http://xkcd.com/1193/
+//
+//===-- Usage -------------------------------------------------------------===//
+//
+// make
+// ./hash <num_threads>
+//
+// If unspecified, num_threads is set to the number of available processors.
+//
+//===-- String Generation -------------------------------------------------===//
+//
+// Our string generation is accomplished by periodically filling
+// the majority of the string with random characters from our
+// character set, and exhaustively trying all possibilities
+// for the remaining characters.
+//
+// Generating random strings is expensive, requiring many
+// calls to random().  The exhaustive search is done to amortize
+// this cost, while still mostly generating random strings.
+//
+// The repeated random generation is an attempt to prevent
+// two identical starting states from causing hosts to compute
+// purely redundant calculations.  This way, happening to output
+// the same 128 integers is not taken to be a reflection
+// of having the same internal PRNG state.
+//
+// Strings of length 128 are used to match the 1024bit block size,
+// which means we can hash them faster.
+//
+// For fun, we hardcode into our candidate inputs a vanity prefix
+// and suffix.  This also aids in demonstrating who was responsible
+// for generating a particular string.
+//
+//===-- Compatability -----------------------------------------------------===//
+//
+// This should work on most 32/64bit machines, and has been reported
+// to work well on both linux and mac machines.
+//
+// On Linux, we use (fixed from reference versions) assembly versions
+// of the most compute-intensive part of the skein hash calculation,
+// but are unable to use this on Mac's due to not supporting gas assembly.
+//
+// Porting this to windows should be straightforward, although
+// things like the way we seed the PRNG will need to be changed.
+//
+//===----------------------------------------------------------------------===//
 
 #define _XOPEN_SOURCE 600
 
@@ -9,58 +64,76 @@
 #include <string.h>
 #include <sys/utsname.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "skein/SHA3api_ref.h"
 
+//===-- Configuration -----------------------------------------------------===//
+
+// Length of generated strings
 const size_t LEN = 128;
-int NUM_THREADS; // Set by single argument to main
 
 // Vanity strings hardcoded at beginning/end of generated inputs
-const char prefix[] = "UIUC.edu-";
-const char suffix[] = "-UIUC.edu";
+const char PREFIX_STRING[] = "UIUC.edu-";
+const char SUFFIX_STRING[] = "-UIUC.edu";
 
 // How many characters do we exhaustively search for each random prefix?
 const size_t SEARCH_CHARS = 6;
 
-// Characer set to use.  Limited by what the web form seems to accept.
-static const char charset[] = "abcdefghijklmnopqrstuvwxyz"
+// Character set to use.  Limited by what the web form seems to accept.
+static const char CHARSET[] = "abcdefghijklmnopqrstuvwxyz"
                               "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                               "0123456789"
                               "_-.*";
-const uint64_t charset_size = sizeof(charset) - 1;
+const uint64_t CHARSET_SIZE = sizeof(CHARSET) - 1;
 
-const char *goal =
-    "5b4da95f5fa08280fc9879df44f418c8f9f12ba424b7757de02bbdfbae0d4c4fdf9317c80c"
-    "c5fe04c6429073466cf29706b8c25999ddd2f6540d4475cc977b87f4757be023f19b8f4035"
-    "d7722886b78869826de916a79cf9c94cc79cd4347d24b567aa3e2390a573a373a48a5e6766"
-    "40c79cc70197e1c5e7f902fb53ca1858b6";
+// Target hash.
+char GOAL_BITS[128] = {
+  0x5b, 0x4d, 0xa9, 0x5f, 0x5f, 0xa0, 0x82, 0x80, 0xfc, 0x98, 0x79, 0xdf, 0x44,
+  0xf4, 0x18, 0xc8, 0xf9, 0xf1, 0x2b, 0xa4, 0x24, 0xb7, 0x75, 0x7d, 0xe0, 0x2b,
+  0xbd, 0xfb, 0xae, 0x0d, 0x4c, 0x4f, 0xdf, 0x93, 0x17, 0xc8, 0x0c, 0xc5, 0xfe,
+  0x04, 0xc6, 0x42, 0x90, 0x73, 0x46, 0x6c, 0xf2, 0x97, 0x06, 0xb8, 0xc2, 0x59,
+  0x99, 0xdd, 0xd2, 0xf6, 0x54, 0x0d, 0x44, 0x75, 0xcc, 0x97, 0x7b, 0x87, 0xf4,
+  0x75, 0x7b, 0xe0, 0x23, 0xf1, 0x9b, 0x8f, 0x40, 0x35, 0xd7, 0x72, 0x28, 0x86,
+  0xb7, 0x88, 0x69, 0x82, 0x6d, 0xe9, 0x16, 0xa7, 0x9c, 0xf9, 0xc9, 0x4c, 0xc7,
+  0x9c, 0xd4, 0x34, 0x7d, 0x24, 0xb5, 0x67, 0xaa, 0x3e, 0x23, 0x90, 0xa5, 0x73,
+  0xa3, 0x73, 0xa4, 0x8a, 0x5e, 0x67, 0x66, 0x40, 0xc7, 0x9c, 0xc7, 0x01, 0x97,
+  0xe1, 0xc5, 0xe7, 0xf9, 0x02, 0xfb, 0x53, 0xca, 0x18, 0x58, 0xb6
+};
 
-char goalbits[128];
+//===-- Global state ------------------------------------------------------===//
 
-unsigned hex2dec(char c) {
-  if (c >= '0' && c <= '9')
-    return c - '0';
-  return 10 + (c - 'a');
-}
+// Number of threads being used, set by main().
+int num_threads;
 
-// Convert the string representation of the goal hash
-// into the corresponding byte array for comparison.
-void init_goalbits() {
-  assert(strlen(goal) == 256);
-  printf("Goal: ");
-  for (unsigned i = 0; i < 128; ++i) {
-    unsigned char b1 = hex2dec(goal[2 * i]);
-    unsigned char b2 = hex2dec(goal[2 * i + 1]);
-    goalbits[i] = b1 << 4 | b2;
-    printf("%02x", (unsigned char) goalbits[i]);
-  }
-  printf("\n");
-}
+// Lock to protect global state
+pthread_mutex_t global_lock;
+
+// What's the best score across all threads?
+int global_best = INT_MAX;
+
+// Throughput calculation variables:
+// How many hashes have been computed by threads
+// that reached the threshold?
+uint64_t global_count = 0;
+
+// How many threads have hit the threshold?
+// Used to determine when all threads have done so.
+int global_done = 0;
+
+// When did this program start?
+time_t global_start;
+
+// Convenience wrappers for pthread functions.
+void lock() { pthread_mutex_lock(&global_lock); }
+void unlock() { pthread_mutex_unlock(&global_lock); }
+
+//===-- Utility Functions -------------------------------------------------===//
 
 // Populate 'str' with 'len' random characters from the character set.
 void gen_rand(char *str, size_t len) {
   for (size_t i = 0; i < len; ++i)
-    str[i] = charset[random() % charset_size];
+    str[i] = CHARSET[random() % CHARSET_SIZE];
 }
 
 static inline unsigned distance(unsigned x, unsigned y) {
@@ -83,31 +156,12 @@ static inline int hamming_dist(char *s1, char *s2, size_t len) {
   return dist;
 }
 
-// Lock to protect global state, below
-pthread_mutex_t global_lock;
-
-// What's the best score across all threads?
-int global_best = INT_MAX;
-
-// Throughput calculation variables:
-// How many hashes have been computed by threads
-// that reached the threshold?
-uint64_t global_count = 0;
-// How many threads have hit the threshold?
-// Used to determine when all threads have done so.
-int global_done = 0;
-
-// When did this program start?
-time_t global_start;
-
-void lock() { pthread_mutex_lock(&global_lock); }
-
-void unlock() { pthread_mutex_unlock(&global_lock); }
+//===-- Worker Thread -----------------------------------------------------===//
 
 void *search(void *unused) {
   // Various size constants for convenience
-  const size_t prelen = strlen(prefix);
-  const size_t sufflen = strlen(suffix);
+  const size_t prelen = strlen(PREFIX_STRING);
+  const size_t sufflen = strlen(SUFFIX_STRING);
   const size_t suffstart = LEN - sufflen;
 
   // Buffer used to store candidate string, extra for null terminator.
@@ -115,8 +169,8 @@ void *search(void *unused) {
   str[LEN] = 0;
 
   // Put in our hardcoded prefix/suffix strings
-  strcpy(str, prefix);
-  strcpy(str + suffstart, suffix);
+  strcpy(str, PREFIX_STRING);
+  strcpy(str + suffstart, SUFFIX_STRING);
 
   // Track how many hashes we've tried, for throughput estimate.
   uint64_t count = 0;
@@ -135,19 +189,20 @@ start:
   gen_rand(str + prelen, LEN - prelen - sufflen - SEARCH_CHARS);
 
   // Iteration index array
+  // Indirection used to keep character set flexible.
   unsigned idx[SEARCH_CHARS];
   memset(idx, 0, sizeof(idx));
 
   // Initialize enumeration part of string to first letter in charset
   char *iterstr = str + suffstart - SEARCH_CHARS;
-  memset(iterstr, charset[0], SEARCH_CHARS);
+  memset(iterstr, CHARSET[0], SEARCH_CHARS);
 
   while (1) {
     // Try string in current form
     Hash(1024, (BitSequence *)str, LEN * 8, (BitSequence *)hash);
 
     // How'd we do?
-    int d = hamming_dist(hash, goalbits, 128);
+    int d = hamming_dist(hash, GOAL_BITS, 128);
 
     // If this is the best we've seen, print it and update best.
     if (d < best) {
@@ -173,13 +228,17 @@ start:
     // ...
     // (etc)
     int cur = 0;
-    while (++idx[cur] >= charset_size) {
+    while (++idx[cur] >= CHARSET_SIZE) {
       idx[cur] = 0;
-      iterstr[cur] = charset[idx[cur]];
+      iterstr[cur] = CHARSET[idx[cur]];
+
+      // Advance to next position.
+      // If we've used all of our search characters,
+      // time to start over with new random prefix.
       if (++cur == SEARCH_CHARS)
         goto start;
     }
-    iterstr[cur] = charset[idx[cur]];
+    iterstr[cur] = CHARSET[idx[cur]];
 
     // Throughput calculation.
     // Once this thread hits a limit, increment global_done
@@ -194,7 +253,7 @@ start:
       lock();
       global_count += count;
       assert(global_count >= count && "counter overflow");
-      if (++global_done == NUM_THREADS) {
+      if (++global_done == num_threads) {
         printf("\n*** Total throughput ~= %f hash/S\n\n",
                ((double)(global_count)) / elapsed);
       }
@@ -202,6 +261,8 @@ start:
     }
   }
 }
+
+//===-- PRNG Seeding ------------------------------------------------------===//
 
 // Seed random with hash of hostname combined with current time.
 void seed() {
@@ -211,35 +272,40 @@ void seed() {
     exit(-1);
   }
   printf("Hostname=%s\n", name.nodename);
-  int seed;
-  Hash(sizeof(int) * 8, (BitSequence *)name.nodename, strlen(name.nodename) * 8,
-       (BitSequence *)&seed);
+
+  unsigned seed;
+  Hash(sizeof(unsigned) * 8, (BitSequence *)name.nodename,
+       strlen(name.nodename) * 8, (BitSequence *)&seed);
   seed += time(NULL);
 
-  printf("seed=%d\n", seed);
+  printf("seed=%u\n", seed);
 
   static char state[256];
   initstate(seed, state, 256);
 }
 
+//===-- Main -------------------------------------------------------------===//
+
 int main(int argc, char **argv) {
-  assert(argc > 1 && "Single argument: number of threads");
-  NUM_THREADS = atoi(argv[1]);
-  assert(NUM_THREADS > 0);
-  printf("Using %d threads...\n", NUM_THREADS);
+  if (argc > 1)
+    num_threads = atoi(argv[1]);
+  else
+    num_threads = sysconf(_SC_NPROCESSORS_ONLN);
+
+  assert(num_threads > 0);
+  printf("Using %d threads...\n", num_threads);
 
   // Initialize global state
   seed();
-  init_goalbits();
   global_start = time(NULL);
 
   // Spawn worker threads
-  pthread_t threads[NUM_THREADS];
-  for (int i = 0; i < NUM_THREADS; ++i)
+  pthread_t threads[num_threads];
+  for (int i = 0; i < num_threads; ++i)
     pthread_create(&threads[i], NULL, search, NULL);
 
   // Wait for them, although they never return.
-  for (int i = 0; i < NUM_THREADS; ++i)
+  for (int i = 0; i < num_threads; ++i)
     pthread_join(threads[i], NULL);
 
   return 0;
