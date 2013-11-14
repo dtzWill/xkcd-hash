@@ -70,3 +70,4 @@ For fun, we use a fixed vanity prefix and suffix string in
 the generated input strings.  This also aids in demonstrating who was
 responsible for generating a particular string.
 
+cheezey is da best
